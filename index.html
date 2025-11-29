@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Secure Protocol</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.1.1/crypto-js.min.js"></script>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <style>
+        /* --- GLOBAL STYLES --- */
+        body {
+            background-color: #0d1117;
+            color: #c9d1d9;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100vh;
+            overflow-x: hidden; /* Prevent body from scrolling sideways, only chart should scroll */
+        }
+
+        h1 { font-size: 1.2rem; margin: 20px 0 5px 0; text-align: center; color: white; }
+        .stats { font-family: monospace; font-size: 0.8rem; color: #8b949e; margin-bottom: 20px; text-align: center; }
+
+        /* --- LOGIN SCREEN --- */
+        #login-screen { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background-color: #0d1117; display: flex; flex-direction: column; justify-content: center; align-items: center; z-index: 9999; }
+        .login-box { background: #161b22; padding: 30px; border-radius: 12px; border: 1px solid #30363d; text-align: center; width: 80%; max-width: 300px; }
+        input[type="password"] { width: 90%; padding: 10px; margin-bottom: 15px; border-radius: 6px; border: 1px solid #30363d; background: #0d1117; color: white; font-size: 16px; }
+        button { background-color: #238636; color: white; border: none; padding: 10px 20px; border-radius: 6px; font-size: 16px; cursor: pointer; width: 100%; }
+        .error-msg { color: #ff6666; margin-top: 10px; font-size: 14px; display: none; }
+
+        /* --- MAIN APP LAYOUT --- */
+        #app-content { 
+            display: none; /* Hidden until unlocked */
+            flex-direction: column; 
+            align-items: center; 
+            width: 100%;
+        }
+
+        /* --- FIXED SCROLLING CONTAINER --- */
+        #chart-wrapper {
+            width: 100%;
+            overflow-x: auto; /* Force horizontal scroll */
+            -webkit-overflow-scrolling: touch; /* Smooth iOS scrolling */
+            padding-bottom: 20px;
+            margin-bottom: 10px;
+            display: block; /* Ensure it's a block to allow scrolling */
+        }
+
+        /* The SVG container inside the wrapper */
+        #chart-container {
+            display: inline-block; /* Allows width to expand */
+            padding-left: 10px; /* Space on left edge */
+            padding-right: 20px; /* Space on right edge so it doesn't cut off */
+        }
+
+        /* --- LEGEND STYLES --- */
+        .legend { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; max-width: 90%; padding: 0 10px; margin-bottom: 40px; }
+        .legend-item { display: flex; align-items: center; font-size: 0.75rem; color: #c9d1d9; }
+        .legend-box { width: 12px; height: 12px; margin-right: 5px; border-radius: 2px; }
+
+        .tooltip { position: absolute; background: rgba(0,0,0,0.8); color: white; padding: 5px 10px; border-radius: 4px; font-size: 12px; pointer-events: none; opacity: 0; transition: opacity 0.2s; border: 1px solid #30363d; }
+    </style>
+</head>
+<body>
+
+    <div id="login-screen">
+        <div class="login-box">
+            <h2 style="color:white; margin-top:0;">Encrypted Access</h2>
+            <input type="password" id="password-input" placeholder="Enter Password">
+            <button onclick="attemptUnlock()">Decrypt & Unlock</button>
+            <div id="error-msg" class="error-msg">Wrong Password</div>
+        </div>
+    </div>
+
+    <div id="app-content">
+        <h1 id="year-title">Protocol View</h1>
+        <div class="stats" id="stats-display">Loading...</div>
+
+        <div id="chart-wrapper">
+            <div id="chart-container"></div>
+        </div>
+
+        <div class="legend">
+            <div class="legend-item"><div class="legend-box" style="background:#00e676"></div>Clean</div>
+            <div class="legend-item"><div class="legend-box" style="background:#2f81f7"></div>Mindful</div>
+            <div class="legend-item"><div class="legend-box" style="background:#ffcc00"></div>Slip/Fantasy</div>
+            <div class="legend-item"><div class="legend-box" style="background:#ff6600"></div>Visual</div>
+            <div class="legend-item"><div class="legend-box" style="background:#c43737"></div>Relapse (1x)</div>
+            <div class="legend-item"><div class="legend-box" style="background:#ff0000; border:1px solid red"></div>Relapse (2x+)</div>
+        </div>
+
+        <div id="tooltip" class="tooltip"></div>
+    </div>
+
+    <script>
+        // ==========================================
+        // CONFIGURATION
+        // ==========================================
+        
+        // PASTE YOUR GENERATED CODE HERE:
+        const ENCRYPTED_URL = "U2FsdGVkX1+rszJFjBAFJPYF14PkiKf03rpTHD7KIxxrtnnEAkk7YaJYJfVpz0wcFuA3aIspysOFNn1VxtKHckzi5tXO7CSTjJu8qlQAvFs0R+Hex4Bi3qcs0Q+wsScpc/tD5sCFw8cmx/tc3JUzd2brkBrQLpRUg/Z4lMfTmSFkBb0dXPWpAOVZDmKeamvM0dld60ylufx1tzyse57OMhOBz7ebabd+QrGR16veiLFgASLn79ICGKmhHoiVbALFhvON+l7Z1mCs/BaDd/mFnQ=="; 
+
+        // ==========================================
+
+        const WEIGHTS = {
+            'Relapse': -3, 'Visual': -2, 'Fantasy': -1.5, 'Stimulus': -1.5, 'Mindful': -0.5, 'Clean': 1.0
+        };
+
+        const COLORS = {
+            clean: '#00e676', mindful: '#2f81f7', fantasy: '#ffcc00', visual: '#ff6600',
+            relapseSingle: '#c43737', relapseMulti: '#ff0000', empty: '#161b22'
+        };
+
+        function attemptUnlock() {
+            const password = document.getElementById('password-input').value;
+            const errorMsg = document.getElementById('error-msg');
+            try {
+                const bytes = CryptoJS.AES.decrypt(ENCRYPTED_URL, password);
+                const decryptedURL = bytes.toString(CryptoJS.enc.Utf8);
+
+                if (decryptedURL && decryptedURL.startsWith("http")) {
+                    localStorage.setItem('tracker_pass', password);
+                    document.getElementById('login-screen').style.display = 'none';
+                    document.getElementById('app-content').style.display = 'flex';
+                    init(decryptedURL);
+                } else { throw new Error("Invalid"); }
+            } catch (e) {
+                errorMsg.style.display = 'block';
+                errorMsg.innerText = "Wrong Password";
+            }
+        }
+
+        window.onload = function() {
+            const savedPass = localStorage.getItem('tracker_pass');
+            if (savedPass) { document.getElementById('password-input').value = savedPass; }
+        }
+
+        async function init(url) {
+            try {
+                const data = await d3.csv(url);
+                const processed = processData(data);
+                renderHeatmap(processed);
+            } catch (error) {
+                document.getElementById('stats-display').textContent = "Error: " + error.message;
+            }
+        }
+
+        function processData(data) {
+            const dailyStats = new Map();
+            let firstLogDate = null;
+            const parseDate = d3.timeParse("%m/%d/%Y %H:%M:%S");
+            const parseDateShort = d3.timeParse("%m/%d/%Y");
+
+            data.forEach(row => {
+                const timestampStr = row['Timestamp'];
+                const category = row['Column 1'];
+                if (!timestampStr || !category) return;
+
+                let dateObj = parseDate(timestampStr) || parseDateShort(timestampStr); 
+                
+                if (dateObj) {
+                    const dateKey = d3.timeFormat("%Y-%m-%d")(dateObj);
+                    if (!firstLogDate || dateObj < firstLogDate) firstLogDate = dateObj;
+
+                    if (!dailyStats.has(dateKey)) dailyStats.set(dateKey, { score: 0, count: 0 });
+                    const stat = dailyStats.get(dateKey);
+                    stat.score += (WEIGHTS[category] || 0);
+                    stat.count += 1;
+                }
+            });
+            return { map: dailyStats, startLogDate: firstLogDate };
+        }
+
+        function renderHeatmap({ map, startLogDate }) {
+            const now = new Date();
+            const year = now.getFullYear();
+            const startDate = new Date(year, 0, 1);
+            const endDate = new Date(year, 11, 31);
+            const allDays = d3.timeDays(startDate, endDate);
+            
+            const cellSize = 14; 
+            const cellGap = 3;
+            const weekLabelWidth = 30;
+            const height = (cellSize + cellGap) * 7 + 20; 
+            const width = (cellSize + cellGap) * 53 + weekLabelWidth; 
+
+            // Clear previous and append new SVG
+            const svg = d3.select("#chart-container").html("").append("svg")
+                .attr("width", width)
+                .attr("height", height)
+                .style("font-family", "monospace");
+
+            const days = ["Mon", "Wed", "Fri"];
+            svg.selectAll(".dayLabel").data(days).enter().append("text")
+                .text(d => d).attr("x", 0).attr("y", (d, i) => (i * 2 + 1) * (cellSize + cellGap) + cellSize) 
+                .style("text-anchor", "start").style("fill", "#8b949e").style("font-size", "9px");
+
+            const g = svg.append("g").attr("transform", `translate(${weekLabelWidth}, 0)`);
+
+            let cleanDaysCount = 0; let relapseDaysCount = 0; let totalActiveDays = 0;
+
+            g.selectAll("rect").data(allDays).enter().append("rect")
+                .attr("width", cellSize).attr("height", cellSize)
+                .attr("x", d => d3.timeWeek.count(d3.timeYear(d), d) * (cellSize + cellGap))
+                .attr("y", d => d.getDay() === 0 ? 6 * (cellSize + cellGap) : (d.getDay() - 1) * (cellSize + cellGap))
+                .attr("rx", 2).attr("ry", 2)
+                .attr("fill", d => {
+                    const dateKey = d3.timeFormat("%Y-%m-%d")(d);
+                    const isFuture = d > now;
+                    const isActive = d >= startLogDate && d <= now;
+
+                    if (isFuture) return COLORS.empty;
+                    let score = 1.0; 
+                    if (map.has(dateKey)) score = map.get(dateKey).score;
+                    else if (!isActive) return COLORS.empty; 
+
+                    if (isActive) {
+                        totalActiveDays++;
+                        if (score === 1.0) cleanDaysCount++;
+                        if (score <= -3) relapseDaysCount++;
+                    }
+
+                    if (score <= -3.1) return COLORS.relapseMulti;
+                    if (score <= -2.1) return COLORS.relapseSingle;
+                    if (score <= -1.51) return COLORS.visual;
+                    if (score <= -0.51) return COLORS.fantasy;
+                    if (score < 0.9) return COLORS.mindful;
+                    return COLORS.clean;
+                })
+                .on("click", (event, d) => {
+                    const dateKey = d3.timeFormat("%Y-%m-%d")(d);
+                    const data = map.get(dateKey);
+                    alert(`${dateKey}\n${data ? `Score: ${data.score}` : "Clean"}`);
+                });
+
+            g.selectAll(".countLabel").data(allDays).enter().append("text")
+                .text(d => {
+                    const dateKey = d3.timeFormat("%Y-%m-%d")(d);
+                    return (map.has(dateKey) && map.get(dateKey).count > 1) ? map.get(dateKey).count : "";
+                })
+                .attr("x", d => d3.timeWeek.count(d3.timeYear(d), d) * (cellSize + cellGap) + cellSize/2)
+                .attr("y", d => (d.getDay()===0?6:(d.getDay()-1)) * (cellSize + cellGap) + cellSize/1.3)
+                .style("text-anchor", "middle").style("fill", "white").style("font-size", "9px").style("font-weight", "bold").style("pointer-events", "none");
+
+            document.getElementById('year-title').innerText = `${year} PROTOCOL VIEW`;
+            document.getElementById('stats-display').innerText = `Clean: ${cleanDaysCount}/${totalActiveDays} | Relapse: ${relapseDaysCount}`;
+            
+            // AUTO SCROLL TO END (RIGHT SIDE)
+            const wrapper = document.getElementById('chart-wrapper');
+            wrapper.scrollLeft = wrapper.scrollWidth;
+        }
+    </script>
+</body>
+</html>
