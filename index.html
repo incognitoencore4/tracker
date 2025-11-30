@@ -16,7 +16,7 @@
             padding: 0;
             width: 100%;
             height: 100vh;
-            overflow-x: hidden; /* Prevent body from scrolling sideways, only chart should scroll */
+            overflow-x: hidden; 
         }
 
         h1 { font-size: 1.2rem; margin: 20px 0 5px 0; text-align: center; color: white; }
@@ -31,7 +31,7 @@
 
         /* --- MAIN APP LAYOUT --- */
         #app-content { 
-            display: none; /* Hidden until unlocked */
+            display: none; 
             flex-direction: column; 
             align-items: center; 
             width: 100%;
@@ -40,18 +40,17 @@
         /* --- FIXED SCROLLING CONTAINER --- */
         #chart-wrapper {
             width: 100%;
-            overflow-x: auto; /* Force horizontal scroll */
-            -webkit-overflow-scrolling: touch; /* Smooth iOS scrolling */
+            overflow-x: auto; 
+            -webkit-overflow-scrolling: touch; 
             padding-bottom: 20px;
             margin-bottom: 10px;
-            display: block; /* Ensure it's a block to allow scrolling */
+            display: block; 
         }
 
-        /* The SVG container inside the wrapper */
         #chart-container {
-            display: inline-block; /* Allows width to expand */
-            padding-left: 10px; /* Space on left edge */
-            padding-right: 20px; /* Space on right edge so it doesn't cut off */
+            display: inline-block; 
+            padding-left: 10px; 
+            padding-right: 20px; 
         }
 
         /* --- LEGEND STYLES --- */
@@ -149,6 +148,7 @@
         function processData(data) {
             const dailyStats = new Map();
             let firstLogDate = null;
+            // Robust parsing
             const parseDate = d3.timeParse("%m/%d/%Y %H:%M:%S");
             const parseDateShort = d3.timeParse("%m/%d/%Y");
 
@@ -182,19 +182,27 @@
             const cellSize = 14; 
             const cellGap = 3;
             const weekLabelWidth = 30;
-            const height = (cellSize + cellGap) * 7 + 20; 
-            const width = (cellSize + cellGap) * 53 + weekLabelWidth; 
+            // Increased height slightly to ensure Sunday fits comfortably
+            const height = (cellSize + cellGap) * 7 + 30; 
+            const width = (cellSize + cellGap) * 54 + weekLabelWidth; 
 
-            // Clear previous and append new SVG
             const svg = d3.select("#chart-container").html("").append("svg")
                 .attr("width", width)
                 .attr("height", height)
                 .style("font-family", "monospace");
 
-            const days = ["Mon", "Wed", "Fri"];
-            svg.selectAll(".dayLabel").data(days).enter().append("text")
-                .text(d => d).attr("x", 0).attr("y", (d, i) => (i * 2 + 1) * (cellSize + cellGap) + cellSize) 
-                .style("text-anchor", "start").style("fill", "#8b949e").style("font-size", "9px");
+            // --- CHANGED: SHOW ALL 7 DAYS ---
+            const days = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+            svg.selectAll(".dayLabel")
+                .data(days)
+                .enter().append("text")
+                .text(d => d)
+                .attr("x", 0)
+                // Calculated to align perfectly with the center of each row
+                .attr("y", (d, i) => i * (cellSize + cellGap) + (cellSize / 1.3)) 
+                .style("text-anchor", "start")
+                .style("fill", "#8b949e")
+                .style("font-size", "9px");
 
             const g = svg.append("g").attr("transform", `translate(${weekLabelWidth}, 0)`);
 
@@ -202,8 +210,14 @@
 
             g.selectAll("rect").data(allDays).enter().append("rect")
                 .attr("width", cellSize).attr("height", cellSize)
-                .attr("x", d => d3.timeWeek.count(d3.timeYear(d), d) * (cellSize + cellGap))
-                .attr("y", d => d.getDay() === 0 ? 6 * (cellSize + cellGap) : (d.getDay() - 1) * (cellSize + cellGap))
+                // Use d3.timeMonday to align strict ISO weeks
+                .attr("x", d => d3.timeMonday.count(d3.timeYear(d), d) * (cellSize + cellGap))
+                .attr("y", d => {
+                    // 0 = Sunday, 1 = Monday. We want Mon=0, Sun=6
+                    const dayIndex = d.getDay(); 
+                    const rowIndex = dayIndex === 0 ? 6 : dayIndex - 1;
+                    return rowIndex * (cellSize + cellGap);
+                })
                 .attr("rx", 2).attr("ry", 2)
                 .attr("fill", d => {
                     const dateKey = d3.timeFormat("%Y-%m-%d")(d);
@@ -234,19 +248,23 @@
                     alert(`${dateKey}\n${data ? `Score: ${data.score}` : "Clean"}`);
                 });
 
+            // Count labels
             g.selectAll(".countLabel").data(allDays).enter().append("text")
                 .text(d => {
                     const dateKey = d3.timeFormat("%Y-%m-%d")(d);
                     return (map.has(dateKey) && map.get(dateKey).count > 1) ? map.get(dateKey).count : "";
                 })
-                .attr("x", d => d3.timeWeek.count(d3.timeYear(d), d) * (cellSize + cellGap) + cellSize/2)
-                .attr("y", d => (d.getDay()===0?6:(d.getDay()-1)) * (cellSize + cellGap) + cellSize/1.3)
+                .attr("x", d => d3.timeMonday.count(d3.timeYear(d), d) * (cellSize + cellGap) + cellSize/2)
+                .attr("y", d => {
+                    const dayIndex = d.getDay(); 
+                    const rowIndex = dayIndex === 0 ? 6 : dayIndex - 1;
+                    return rowIndex * (cellSize + cellGap) + cellSize/1.3;
+                })
                 .style("text-anchor", "middle").style("fill", "white").style("font-size", "9px").style("font-weight", "bold").style("pointer-events", "none");
 
             document.getElementById('year-title').innerText = `${year} PROTOCOL VIEW`;
             document.getElementById('stats-display').innerText = `Clean: ${cleanDaysCount}/${totalActiveDays} | Relapse: ${relapseDaysCount}`;
             
-            // AUTO SCROLL TO END (RIGHT SIDE)
             const wrapper = document.getElementById('chart-wrapper');
             wrapper.scrollLeft = wrapper.scrollWidth;
         }
