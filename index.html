@@ -15,12 +15,9 @@
             margin: 0;
             padding: 0;
             width: 100%;
-            height: 100vh;
+            min-height: 100vh;
             overflow-x: hidden; 
         }
-
-        h1 { font-size: 1.2rem; margin: 20px 0 5px 0; text-align: center; color: white; }
-        .stats { font-family: monospace; font-size: 0.8rem; color: #8b949e; margin-bottom: 20px; text-align: center; }
 
         /* --- LOGIN SCREEN --- */
         #login-screen { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background-color: #0d1117; display: flex; flex-direction: column; justify-content: center; align-items: center; z-index: 9999; }
@@ -35,34 +32,58 @@
             flex-direction: column; 
             align-items: center; 
             width: 100%;
+            padding-bottom: 60px; /* Space for sticky legend */
         }
 
-        /* --- FIXED SCROLLING CONTAINER --- */
-        #chart-wrapper {
+        /* --- YEAR CONTAINER --- */
+        .year-block {
+            width: 100%;
+            margin-bottom: 30px;
+            border-bottom: 1px solid #30363d;
+            padding-bottom: 10px;
+        }
+
+        h1 { font-size: 1.2rem; margin: 20px 0 5px 0; text-align: center; color: white; }
+        .stats { font-family: monospace; font-size: 0.8rem; color: #8b949e; margin-bottom: 10px; text-align: center; }
+
+        /* --- SCROLL WRAPPER --- */
+        .chart-wrapper {
             width: 100%;
             overflow-x: auto; 
             -webkit-overflow-scrolling: touch; 
-            padding-bottom: 20px;
-            margin-bottom: 10px;
+            padding-bottom: 10px;
             display: block; 
         }
 
-        #chart-container {
+        .chart-svg-container {
             display: inline-block; 
             padding-left: 10px; 
             padding-right: 20px; 
         }
 
         /* --- LEGEND STYLES --- */
-        .legend { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; max-width: 90%; padding: 0 10px; margin-bottom: 40px; }
-        .legend-item { display: flex; align-items: center; font-size: 0.75rem; color: #c9d1d9; }
-        .legend-box { width: 12px; height: 12px; margin-right: 5px; border-radius: 2px; }
-
-        .tooltip { position: absolute; background: rgba(0,0,0,0.8); color: white; padding: 5px 10px; border-radius: 4px; font-size: 12px; pointer-events: none; opacity: 0; transition: opacity 0.2s; border: 1px solid #30363d; }
+        .legend { 
+            display: flex; 
+            flex-wrap: wrap; 
+            justify-content: center; 
+            gap: 15px; 
+            padding: 15px; 
+            background: #0d1117; 
+            position: fixed; 
+            bottom: 0; 
+            left: 0;
+            border-top: 1px solid #30363d; 
+            width: 100%; 
+            box-sizing: border-box; 
+            z-index: 100;
+        }
+        .legend-item { display: flex; align-items: center; font-size: 0.8rem; color: #c9d1d9; }
+        .legend-box { width: 14px; height: 14px; margin-right: 6px; border-radius: 3px; }
     </style>
 </head>
 <body>
 
+    <!-- LOGIN -->
     <div id="login-screen">
         <div class="login-box">
             <h2 style="color:white; margin-top:0;">Encrypted Access</h2>
@@ -72,24 +93,17 @@
         </div>
     </div>
 
+    <!-- MAIN APP -->
     <div id="app-content">
-        <h1 id="year-title">Protocol View</h1>
-        <div class="stats" id="stats-display">Loading...</div>
+        <div id="years-container" style="width:100%"></div>
 
-        <div id="chart-wrapper">
-            <div id="chart-container"></div>
-        </div>
-
+        <!-- UPDATED LEGEND -->
         <div class="legend">
             <div class="legend-item"><div class="legend-box" style="background:#00e676"></div>Clean</div>
             <div class="legend-item"><div class="legend-box" style="background:#2f81f7"></div>Mindful</div>
-            <div class="legend-item"><div class="legend-box" style="background:#ffcc00"></div>Slip/Fantasy</div>
-            <div class="legend-item"><div class="legend-box" style="background:#ff6600"></div>Visual</div>
-            <div class="legend-item"><div class="legend-box" style="background:#c43737"></div>Relapse (1x)</div>
-            <div class="legend-item"><div class="legend-box" style="background:#ff0000; border:1px solid red"></div>Relapse (2x+)</div>
+            <div class="legend-item"><div class="legend-box" style="background:#ffbb00"></div>Visual</div>
+            <div class="legend-item"><div class="legend-box" style="background:#c43737"></div>Relapse</div>
         </div>
-
-        <div id="tooltip" class="tooltip"></div>
     </div>
 
     <script>
@@ -102,13 +116,21 @@
 
         // ==========================================
 
-        const WEIGHTS = {
-            'Relapse': -3, 'Visual': -2, 'Fantasy': -1.5, 'Stimulus': -1.5, 'Mindful': -0.5, 'Clean': 1.0
+        // New Priorities: Relapse > Visual > Mindful.
+        // Scores are used for coloring logic.
+        const SCORES = {
+            RELAPSE: -5,
+            VISUAL: -3,
+            MINDFUL: -1,
+            CLEAN: 1.0
         };
 
         const COLORS = {
-            clean: '#00e676', mindful: '#2f81f7', fantasy: '#ffcc00', visual: '#ff6600',
-            relapseSingle: '#c43737', relapseMulti: '#ff0000', empty: '#161b22'
+            clean: '#00e676', 
+            mindful: '#2f81f7', 
+            visual: '#ffbb00',
+            relapse: '#c43737', 
+            empty: '#161b22'
         };
 
         function attemptUnlock() {
@@ -139,23 +161,23 @@
             try {
                 const data = await d3.csv(url);
                 const processed = processData(data);
-                renderHeatmap(processed);
+                renderAllYears(processed);
             } catch (error) {
-                document.getElementById('stats-display').textContent = "Error: " + error.message;
+                alert("Error loading data: " + error.message);
             }
         }
 
         function processData(data) {
             const dailyStats = new Map();
             let firstLogDate = null;
-            // Robust parsing
+            
             const parseDate = d3.timeParse("%m/%d/%Y %H:%M:%S");
             const parseDateShort = d3.timeParse("%m/%d/%Y");
 
             data.forEach(row => {
                 const timestampStr = row['Timestamp'];
-                const category = row['Column 1'];
-                if (!timestampStr || !category) return;
+                const categoryRaw = row['Column 1'];
+                if (!timestampStr || !categoryRaw) return;
 
                 let dateObj = parseDate(timestampStr) || parseDateShort(timestampStr); 
                 
@@ -163,42 +185,108 @@
                     const dateKey = d3.timeFormat("%Y-%m-%d")(dateObj);
                     if (!firstLogDate || dateObj < firstLogDate) firstLogDate = dateObj;
 
-                    if (!dailyStats.has(dateKey)) dailyStats.set(dateKey, { score: 0, count: 0 });
+                    if (!dailyStats.has(dateKey)) {
+                        // Initialize counters for this day
+                        dailyStats.set(dateKey, { 
+                            relapseCount: 0, 
+                            hasVisual: false, 
+                            hasMindful: false 
+                        });
+                    }
+
                     const stat = dailyStats.get(dateKey);
-                    stat.score += (WEIGHTS[category] || 0);
-                    stat.count += 1;
+                    const cat = categoryRaw.trim();
+
+                    // --- NEW PRECEDENCE LOGIC ---
+                    if (cat.includes('Relapse')) {
+                        stat.relapseCount += 1;
+                    } else if (cat.includes('Visual')) {
+                        stat.hasVisual = true;
+                    } else if (cat.includes('Mindful')) {
+                        stat.hasMindful = true;
+                    }
+                    // Stimulus and Fantasy are ignored
                 }
             });
+
+            // Post-process: Calculate Final Score based on Precedence
+            // Relapse > Visual > Mindful
+            dailyStats.forEach((value, key) => {
+                if (value.relapseCount > 0) {
+                    value.finalScore = SCORES.RELAPSE;
+                } else if (value.hasVisual) {
+                    value.finalScore = SCORES.VISUAL;
+                } else if (value.hasMindful) {
+                    value.finalScore = SCORES.MINDFUL;
+                } else {
+                    // Should technically be clean, but this case usually implies ignored data (like only Fantasy)
+                    value.finalScore = SCORES.CLEAN; 
+                }
+            });
+
             return { map: dailyStats, startLogDate: firstLogDate };
         }
 
-        function renderHeatmap({ map, startLogDate }) {
+        function renderAllYears({ map, startLogDate }) {
+            const container = document.getElementById('years-container');
+            container.innerHTML = ""; 
+
+            const currentYear = new Date().getFullYear();
+            const startYear = startLogDate ? startLogDate.getFullYear() : currentYear;
+
+            // Loop backwards from Current Year down to Start Year
+            for (let y = currentYear; y >= startYear; y--) {
+                const yearBlock = document.createElement('div');
+                yearBlock.className = 'year-block';
+                
+                const title = document.createElement('h1');
+                title.innerText = `${y} PROTOCOL VIEW`;
+                yearBlock.appendChild(title);
+
+                const stats = document.createElement('div');
+                stats.className = 'stats';
+                stats.id = `stats-${y}`;
+                yearBlock.appendChild(stats);
+
+                const wrapper = document.createElement('div');
+                wrapper.className = 'chart-wrapper';
+                wrapper.id = `wrapper-${y}`;
+
+                const svgContainer = document.createElement('div');
+                svgContainer.className = 'chart-svg-container';
+                svgContainer.id = `chart-${y}`;
+
+                wrapper.appendChild(svgContainer);
+                yearBlock.appendChild(wrapper);
+                container.appendChild(yearBlock);
+
+                renderSingleYear(y, map, startLogDate);
+            }
+        }
+
+        function renderSingleYear(targetYear, map, globalStartLogDate) {
             const now = new Date();
-            const year = now.getFullYear();
-            const startDate = new Date(year, 0, 1);
-            const endDate = new Date(year, 11, 31);
+            const startDate = new Date(targetYear, 0, 1);
+            const endDate = new Date(targetYear, 11, 31);
             const allDays = d3.timeDays(startDate, endDate);
             
             const cellSize = 14; 
             const cellGap = 3;
             const weekLabelWidth = 30;
-            // Increased height slightly to ensure Sunday fits comfortably
             const height = (cellSize + cellGap) * 7 + 30; 
             const width = (cellSize + cellGap) * 54 + weekLabelWidth; 
 
-            const svg = d3.select("#chart-container").html("").append("svg")
+            const svg = d3.select(`#chart-${targetYear}`).append("svg")
                 .attr("width", width)
                 .attr("height", height)
                 .style("font-family", "monospace");
 
-            // --- CHANGED: SHOW ALL 7 DAYS ---
             const days = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
             svg.selectAll(".dayLabel")
                 .data(days)
                 .enter().append("text")
                 .text(d => d)
                 .attr("x", 0)
-                // Calculated to align perfectly with the center of each row
                 .attr("y", (d, i) => i * (cellSize + cellGap) + (cellSize / 1.3)) 
                 .style("text-anchor", "start")
                 .style("fill", "#8b949e")
@@ -206,14 +294,14 @@
 
             const g = svg.append("g").attr("transform", `translate(${weekLabelWidth}, 0)`);
 
-            let cleanDaysCount = 0; let relapseDaysCount = 0; let totalActiveDays = 0;
+            let cleanDaysCount = 0; 
+            let relapseDaysCount = 0; 
+            let totalActiveDays = 0;
 
             g.selectAll("rect").data(allDays).enter().append("rect")
                 .attr("width", cellSize).attr("height", cellSize)
-                // Use d3.timeMonday to align strict ISO weeks
                 .attr("x", d => d3.timeMonday.count(d3.timeYear(d), d) * (cellSize + cellGap))
                 .attr("y", d => {
-                    // 0 = Sunday, 1 = Monday. We want Mon=0, Sun=6
                     const dayIndex = d.getDay(); 
                     const rowIndex = dayIndex === 0 ? 6 : dayIndex - 1;
                     return rowIndex * (cellSize + cellGap);
@@ -222,37 +310,54 @@
                 .attr("fill", d => {
                     const dateKey = d3.timeFormat("%Y-%m-%d")(d);
                     const isFuture = d > now;
-                    const isActive = d >= startLogDate && d <= now;
+                    const isActive = d >= globalStartLogDate && d <= now;
 
                     if (isFuture) return COLORS.empty;
-                    let score = 1.0; 
-                    if (map.has(dateKey)) score = map.get(dateKey).score;
-                    else if (!isActive) return COLORS.empty; 
+
+                    let score = SCORES.CLEAN; 
+                    if (map.has(dateKey)) {
+                        score = map.get(dateKey).finalScore;
+                    } else if (!isActive) {
+                        return COLORS.empty; 
+                    }
 
                     if (isActive) {
                         totalActiveDays++;
-                        if (score === 1.0) cleanDaysCount++;
-                        if (score <= -3) relapseDaysCount++;
+                        if (score === SCORES.CLEAN) cleanDaysCount++;
+                        if (score === SCORES.RELAPSE) relapseDaysCount++;
                     }
 
-                    if (score <= -3.1) return COLORS.relapseMulti;
-                    if (score <= -2.1) return COLORS.relapseSingle;
-                    if (score <= -1.51) return COLORS.visual;
-                    if (score <= -0.51) return COLORS.fantasy;
-                    if (score < 0.9) return COLORS.mindful;
+                    // --- COLOR LOGIC ---
+                    if (score === SCORES.RELAPSE) return COLORS.relapse;
+                    if (score === SCORES.VISUAL) return COLORS.visual;
+                    if (score === SCORES.MINDFUL) return COLORS.mindful;
                     return COLORS.clean;
                 })
                 .on("click", (event, d) => {
                     const dateKey = d3.timeFormat("%Y-%m-%d")(d);
                     const data = map.get(dateKey);
-                    alert(`${dateKey}\n${data ? `Score: ${data.score}` : "Clean"}`);
+                    
+                    let status = "Clean";
+                    if (data) {
+                        if (data.finalScore === SCORES.RELAPSE) status = `Relapse (${data.relapseCount}x)`;
+                        else if (data.finalScore === SCORES.VISUAL) status = "Visual";
+                        else if (data.finalScore === SCORES.MINDFUL) status = "Mindful";
+                    }
+                    alert(`${dateKey}\nStatus: ${status}`);
                 });
 
-            // Count labels
+            // --- COUNT LABELS (Only for Relapse > 1) ---
             g.selectAll(".countLabel").data(allDays).enter().append("text")
                 .text(d => {
                     const dateKey = d3.timeFormat("%Y-%m-%d")(d);
-                    return (map.has(dateKey) && map.get(dateKey).count > 1) ? map.get(dateKey).count : "";
+                    if (map.has(dateKey)) {
+                        const data = map.get(dateKey);
+                        // Only show number if it is a Relapse day AND count > 1
+                        if (data.finalScore === SCORES.RELAPSE && data.relapseCount > 1) {
+                            return data.relapseCount;
+                        }
+                    }
+                    return "";
                 })
                 .attr("x", d => d3.timeMonday.count(d3.timeYear(d), d) * (cellSize + cellGap) + cellSize/2)
                 .attr("y", d => {
@@ -260,12 +365,17 @@
                     const rowIndex = dayIndex === 0 ? 6 : dayIndex - 1;
                     return rowIndex * (cellSize + cellGap) + cellSize/1.3;
                 })
-                .style("text-anchor", "middle").style("fill", "white").style("font-size", "9px").style("font-weight", "bold").style("pointer-events", "none");
+                .style("text-anchor", "middle")
+                .style("fill", "white")
+                .style("font-size", "9px")
+                .style("font-weight", "bold")
+                .style("pointer-events", "none");
 
-            document.getElementById('year-title').innerText = `${year} PROTOCOL VIEW`;
-            document.getElementById('stats-display').innerText = `Clean: ${cleanDaysCount}/${totalActiveDays} | Relapse: ${relapseDaysCount}`;
+            // Update Stats
+            document.getElementById(`stats-${targetYear}`).innerText = `Clean: ${cleanDaysCount}/${totalActiveDays} | Relapse: ${relapseDaysCount}`;
             
-            const wrapper = document.getElementById('chart-wrapper');
+            // Auto Scroll
+            const wrapper = document.getElementById(`wrapper-${targetYear}`);
             wrapper.scrollLeft = wrapper.scrollWidth;
         }
     </script>
